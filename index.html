@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>Notebook Offline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#0b0f14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Notebook" />
+<link rel="apple-touch-icon" href="./icon-180.png" />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<style>
+  :root{
+    --bg:#0b0f14; --bg2:#111823; --card:#151d29; --line:#22303f;
+    --txt:#e7eef7; --dim:#94a7bd; --acc:#4da3ff; --acc2:#2f7fd1;
+    --ok:#33c98b; --warn:#ffb454; --err:#ff6b6b;
+    --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:linear-gradient(180deg,#0b0f14 0%,#0d131c 60%,#0b0f14 100%);
+    color:var(--txt); font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    overscroll-behavior-y:none;
+  }
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+  header{
+    padding:calc(var(--safe-t) + 10px) 16px 10px; display:flex;align-items:center;gap:10px;
+    border-bottom:1px solid var(--line); background:rgba(11,15,20,.86); backdrop-filter:blur(12px);
+    position:sticky;top:0;z-index:20
+  }
+  .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#4da3ff,#8e6bff);
+    display:grid;place-items:center;font-weight:800;font-size:14px;color:#04121f}
+  header h1{font-size:16px;margin:0;font-weight:650;letter-spacing:-.2px}
+  header .sub{font-size:11px;color:var(--dim);margin-left:auto;text-align:right;line-height:1.25}
+  main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 96px}
+  body.chat-open main{padding-bottom:210px}
+  .tab{display:none} .tab.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 10px;font-weight:700}
+  .muted{color:var(--dim);font-size:13px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button{
+    font:inherit;font-weight:600;border:0;border-radius:12px;padding:12px 16px;background:var(--acc);
+    color:#04121f;cursor:pointer;transition:filter .15s, transform .05s;
+  }
+  button:active{transform:scale(.985)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  button.subtle{background:var(--bg2);color:var(--txt);border:1px solid var(--line)}
+  button.danger{background:transparent;border:1px solid #4a2733;color:#ff8a8a}
+  button.wide{width:100%}
+  label.file{
+    display:block;text-align:center;padding:22px 16px;border:1.5px dashed #2b3d51;border-radius:14px;
+    color:var(--dim);cursor:pointer;background:rgba(77,163,255,.04)
+  }
+  label.file b{color:var(--acc)}
+  input[type=file]{display:none}
+  .bar{height:6px;border-radius:99px;background:#1b2431;overflow:hidden;margin:10px 0 6px}
+  .bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),#8e6bff);transition:width .3s}
+  ul.docs{list-style:none;margin:0;padding:0}
+  ul.docs li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  ul.docs li:last-child{border-bottom:0}
+  ul.docs .name{flex:1;word-break:break-all}
+  ul.docs .meta{color:var(--dim);font-size:11px;margin-top:2px}
+  .x{background:transparent;border:0;color:#6c7f96;font-size:18px;padding:2px 6px;line-height:1}
+  select,textarea,input[type=text]{
+    font:inherit;width:100%;background:var(--bg2);color:var(--txt);border:1px solid var(--line);
+    border-radius:12px;padding:12px
+  }
+  textarea{resize:none;min-height:52px;max-height:160px}
+  .chat{display:flex;flex-direction:column;gap:12px}
+  .msg{border-radius:16px;padding:12px 14px;max-width:100%;font-size:15px;white-space:pre-wrap;word-wrap:break-word}
+  .msg.user{background:#173049;border:1px solid #23476d;align-self:flex-end}
+  .msg.bot{background:var(--card);border:1px solid var(--line)}
+  .msg.bot h3{margin:0 0 6px;font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em}
+  .msg b{color:#fff}
+  .sup{font-size:11px;color:var(--acc);background:rgba(77,163,255,.12);border-radius:5px;padding:0 4px;margin-left:2px}
+  .src{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;font-size:12.5px;color:var(--dim)}
+  .src summary{cursor:pointer;color:var(--acc);font-weight:600}
+  .src p{margin:8px 0 0;white-space:pre-wrap;color:#b9c9da}
+  .composer{
+    position:fixed;left:0;right:0;bottom:calc(64px + var(--safe-b));padding:10px 12px 10px;
+    background:rgba(11,15,20,.94);border-top:1px solid var(--line);backdrop-filter:blur(12px);z-index:30
+  }
+  .composer .inner{display:flex;gap:8px;align-items:flex-end;max-width:760px;margin:0 auto}
+  .composer textarea{flex:1}
+  .send{width:48px;height:48px;border-radius:14px;padding:0;display:grid;place-items:center;font-size:19px}
+  nav{
+    position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;
+    padding:6px 6px calc(6px + var(--safe-b));background:rgba(13,19,28,.97);
+    border-top:1px solid var(--line);z-index:31;backdrop-filter:blur(12px)
+  }
+  nav button{
+    background:transparent;border:0;color:var(--dim);font-size:11px;font-weight:600;
+    display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 14px;border-radius:12px
+  }
+  nav button.on{color:var(--acc);background:rgba(77,163,255,.1)}
+  nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim);
+    background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:4px 10px}
+  .dot{width:7px;height:7px;border-radius:99px;background:#556}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+  .hide{display:none!important}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + var(--safe-b));
+    background:#1d2a3a;border:1px solid var(--line);color:var(--txt);padding:10px 16px;border-radius:12px;
+    font-size:13.5px;z-index:50;max-width:88vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  details.help{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg2);margin-top:10px}
+  details.help summary{cursor:pointer;color:var(--acc);font-weight:600;font-size:13.5px}
+  details.help p{margin:8px 0 0;font-size:13px;color:var(--dim)}
+  code{background:#0a121b;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">N</div>
+    <div>
+      <h1>Notebook Offline</h1>
+      <div class="muted" style="font-size:11px" id="hdrSub">kitaplık boş</div>
+    </div>
+    <div class="sub">
+      <div class="pill" id="gpuPill"><span class="dot" id="gpuDot"></span><span id="gpuTxt">WebGPU kontrol…</span></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ KİTAPLIK ============ -->
+    <section class="tab active" id="tab-lib">
+      <div class="card">
+        <h2>1 · Kaynak ekle</h2>
+        <label class="file" id="drop">
+          <div style="font-size:30px;line-height:1">＋</div>
+          <div><b>PDF seç</b> veya buraya sürükle</div>
+          <div class="muted" style="margin-top:6px">Metin seçilebilir PDF'ler en iyi sonuç verir. 101 kaynağı parça parça ekleyebilirsin.</div>
+          <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple />
+        </label>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost" id="btnDemo" style="flex:1">Demo kaynağı yükle (3 sayfa)</button>
+        </div>
+        <div class="bar hide" id="ingBarWrap"><div class="bar"><i id="ingBar"></i></div>
+          <div class="muted" id="ingTxt">hazır</div></div>
+      </div>
+
+      <div class="card">
+        <h2>Kitaplık <span id="libCount" class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
+        <ul class="docs" id="docList"><li class="muted">Henüz kaynak yok.</li></ul>
+        <div class="row" style="margin-top:12px">
+          <button class="ghost" id="btnClear" style="flex:1">Kitaplığı temizle</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Durum</h2>
+        <div class="muted" id="statLine">—</div>
+        <div class="muted hide" id="modeNote" style="margin-top:8px;color:#ffb454"></div>
+        <details class="help">
+          <summary>Nasıl çalışıyor? (veri nereye gidiyor)</summary>
+          <p>PDF'ler, metinleri ve arama indeksi <b>yalnızca bu cihazda</b> (tarayıcı deposunda) tutulur. Sunucu yok, hesap yok, API anahtarı yok.
+          Cevabı üreten model ilk seferde internetten indirilir (~0,7–4 GB) ve cihazda saklanır; sonrasında <b>uçak modunda</b> çalışır.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============ MODEL ============ -->
+    <section class="tab" id="tab-model">
+      <div class="card">
+        <h2>2 · Model seç ve yükle</h2>
+        <select id="modelSel">
+          <option value="gemma3-1b-it-q4f16_1-MLC">Hızlı · Gemma 3 1B (~0,7 GB) — deneme için</option>
+          <option value="Qwen3.5-2B-q4f16_1-MLC" selected>Dengeli · Qwen 3.5 2B (~2,2 GB) — önerilen başlangıç</option>
+          <option value="gemma-4-E2B-it-q4f16_1-MLC">Çok dilli · Gemma 4 E2B (~3,4 GB) — Türkçesi iyi</option>
+          <option value="Qwen3.5-4B-q4f16_1-MLC">Kalite · Qwen 3.5 4B (~3,9 GB) — iPhone 17 Pro'da sınırda</option>
+        </select>
+        <div class="row" style="margin-top:12px">
+          <button id="btnLoad" style="flex:1">Modeli yükle</button>
+          <button class="ghost" id="btnUnload">Kaldır</button>
+        </div>
+        <div class="bar hide" id="mdlBarWrap"><div class="bar"><i id="mdlBar"></i></div>
+          <div class="muted" id="mdlTxt"></div></div>
+      </div>
+
+      <div class="card">
+        <h2>Telefon için ipuçları</h2>
+        <div class="muted" style="font-size:13.5px;line-height:1.6">
+          · İlk model indirmesini <b>Wi-Fi + şarj</b> takılıyken yap.<br>
+          · 12 GB'lı iPhone 17 Pro'da 2B–4B modeller rahat; 8B modeller iOS bellek sınırına takılabilir.<br>
+          · Model indirdikten sonra uçak modunu açıp test et — çalışıyorsa artık offline'sın.<br>
+          · Cevap yavaş geliyorsa daha küçük modeli seç; kalite yetmiyorsa bir üsttekini.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Depolama</h2>
+        <div class="muted" id="storageLine">—</div>
+        <div class="row" style="margin-top:10px">
+          <button class="subtle" id="btnPersist" style="flex:1">Kalıcı depolama iste</button>
+        </div>
+        <div class="muted" style="margin-top:8px;font-size:12px">Safari, uzun süre açılmayan sitelerin verisini silebilir. Bu düğme izin isterse veriler korunur. Ayrıca uygulamayo Ana Ekrana ekle.</div>
+      </div>
+    </section>
+
+    <!-- ============ SOHBET ============ -->
+    <section class="tab" id="tab-chat">
+      <div class="chat" id="chat"></div>
+      <div class="card" id="chatEmpty">
+        <h2>Soru sor</h2>
+        <div class="muted">Kitaplığına PDF ekle, modeli yükle, sonra buradan sor. Cevaplar <b>[1]</b> gibi kaynak numarasıyla gelir; numaraya bakarak hangi dosyanın hangi sayfasından geldiğini görürsün.</div>
+        <div class="row" style="margin-top:12px">
+          <button class="subtle" data-ex="Bu kaynaklarda geçen ana konuları maddeler hâlinde özetle.">Örnek: özet</button>
+          <button class="subtle" data-ex="X konusu kaynaklarda nasıl tanımlanmış, aynen alıntıla.">Örnek: tanım</button>
+          <button class="subtle" id="btnDemo2">Demo ile dene</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="composer hide" id="composer">
+    <div class="inner">
+      <textarea id="q" rows="1" placeholder="Kaynaklarına bir soru sor…"></textarea>
+      <button class="send" id="btnSend" aria-label="Gönder">→</button>
+    </div>
+  </div>
+
+  <nav>
+    <button class="on" data-tab="lib">
+      <svg viewBox="0 0 24 24"><path d="M4 5h6a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4zM20 5h-6a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h6z"/></svg>
+      Kitaplık
+    </button>
+    <button data-tab="model">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+      Model
+    </button>
+    <button data-tab="chat">
+      <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg>
+      Sohbet
+    </button>
+  </nav>
+</div>
+
+<script type="module" src="./app.js"></script>
+
+<div id="boom" style="display:none;position:fixed;inset:0;z-index:999;background:#0b0f14;padding:20px;overflow:auto">
+  <div style="max-width:640px;margin:6vh auto 0">
+    <div style="font-size:20px;font-weight:700;margin-bottom:6px">Uygulama yüklenemedi</div>
+    <div style="color:#94a7bd;font-size:14px;margin-bottom:14px">Sayfa açıldı ama uygulama kodu çalışmadı. Aşağıdaki hatalar sebebi gösterir.</div>
+    <div id="boomWhy" style="background:#151d29;border:1px solid #22303f;border-radius:14px;padding:14px;font-size:13.5px;line-height:1.6;color:#cfdcea"></div>
+    <pre id="boomErrs" style="background:#0a121b;border:1px solid #22303f;border-radius:12px;padding:12px;color:#ff9c9c;font-size:12px;white-space:pre-wrap;margin-top:12px;max-height:220px;overflow:auto"></pre>
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button onclick="location.reload()">Yeniden dene</button>
+      <button class="ghost" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('boomErrs').textContent).then(()=>alert('Hatalar kopyalandı'))">Hataları kopyala</button>
+    </div>
+    <div style="color:#6c7f96;font-size:12px;margin-top:16px">En sık sebepler: dosyayı file:// ile açmak · <code>vendor/</code> klasörünün eksik yüklenmesi · .mjs dosyalarının yanlış MIME tipiyle servis edilmesi · iOS 26'dan eski sürüm.</div>
+  </div>
+</div>
+<script>
+  // Bu betik klasik (module değil) — uygulama kodu hiç çalışmasa bile çalışır.
+  window.__nbErrs = [];
+  window.addEventListener('error', function (e) {
+    var m = e.message || (e.target && e.target.src ? 'yüklenemedi: ' + e.target.src : 'bilinmeyen hata');
+    window.__nbErrs.push(m + (e.filename ? '  @ ' + e.filename.split('/').pop() + ':' + (e.lineno || '') : ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    window.__nbErrs.push('promise: ' + ((r && (r.message || r.toString())) || r));
+  });
+  setTimeout(function () {
+    if (window.__nbBoot) return;
+    var box = document.getElementById('boom');
+    var why = document.getElementById('boomWhy');
+    var parts = [];
+    if (location.protocol === 'file:') {
+      parts.push('<b style="color:#ffb454">Dosyayı doğrudan açmışsın (file://).</b> Tarayıcılar file:// üzerinden JavaScript modüllerini engeller. Bu klasörü bir sunucudan aç: <code>python3 serve.py</code> ardından <code>http://localhost:8000</code> — ya da GitHub Pages adresini kullan.');
+    } else {
+      parts.push('<b style="color:#ffb454">Modül dosyaları yüklenemedi.</b> Sırayla kontrol et:<br>1) <code>vendor/</code> klasörü (pdf.min.mjs, pdf.worker.min.mjs, web-llm.js) eksiksiz mi?<br>2) <code>.mjs</code> dosyaları <code>text/javascript</code> olarak mı servis ediliyor?<br>3) Tarayıcı iOS 26+ / güncel Chrome mu?');
+    }
+    why.innerHTML = parts.join('<br><br>');
+    document.getElementById('boomErrs').textContent = window.__nbErrs.length ? window.__nbErrs.join('\n') : '(kayıtlı hata yok — modül isteği sessizce düşmüş olabilir)';
+    box.style.display = 'block';
+  }, 2600);
+</script>
+</body>
+</html>
