@@ -267,6 +267,7 @@ async function checkGPU() {
   if (!('gpu' in navigator)) {
     dot.classList.add('err')
     txt.textContent = 'WebGPU yok'
+    showGpuWarn('Bu tarayıcı WebGPU API\'sini sunmuyor. Aynı adresi <b>Safari</b> veya güncel Chrome\'da açman gerekiyor.')
     return false
   }
   try {
@@ -278,8 +279,82 @@ async function checkGPU() {
   } catch (e) {
     dot.classList.add('warn')
     txt.textContent = 'WebGPU sınırlı'
+    showGpuWarn('WebGPU var ama GPU adaptörü alınamadı (' + (e.message || e) + '). Model yüklemeyi yine de deneyebilirsin.')
     return false
   }
+}
+
+function showGpuWarn(html) {
+  const box = $('#gpuWarn')
+  if (!box) return
+  $('#gpuWarnTxt').innerHTML = html
+  box.style.display = 'block'
+}
+
+/* ---------------- tarayıcı tanılama ---------------- */
+
+function browserName() {
+  const ua = navigator.userAgent
+  if (/DuckDuckGo/i.test(ua)) return 'DuckDuckGo Browser'
+  if (/OPiOS|OPR|Opera/i.test(ua)) return 'Opera'
+  if (/EdgiOS|Edg\//i.test(ua)) return 'Edge'
+  if (/CriOS|Chrome/i.test(ua)) return 'Chrome'
+  if (/FxiOS|Firefox/i.test(ua)) return 'Firefox'
+  if (/Safari/i.test(ua)) return 'Safari'
+  return 'bilinmiyor'
+}
+
+function iosVersion() {
+  const m = navigator.userAgent.match(/OS (\d+)[._](\d+)/)
+  return m ? `iOS ${m[1]}.${m[2]}` : '—'
+}
+
+async function renderDiag() {
+  const box = $('#diagBox')
+  if (!box) return
+  const lines = []
+  const standalone =
+    window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
+
+  let gpu = 'API yok'
+  try {
+    if ('gpu' in navigator) {
+      const a = await navigator.gpu.requestAdapter()
+      if (!a) gpu = 'adaptör alınamadı'
+      else {
+        const inf = a.info || {}
+        gpu = 'hazır' + (inf.vendor ? ` (${inf.vendor}${inf.architecture ? '/' + inf.architecture : ''})` : '')
+      }
+    }
+  } catch (e) {
+    gpu = 'hata: ' + (e.message || e)
+  }
+
+  let persist = '?'
+  let usage = '?'
+  try {
+    persist = (await navigator.storage.persisted()) ? 'kalıcı ✓' : 'geçici (silinebilir)'
+    const est = await navigator.storage.estimate()
+    usage = `${fmtBytes(est.usage)} / ${fmtBytes(est.quota)}`
+  } catch (e) {}
+
+  let sw = 'yok'
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration()
+      sw = reg && reg.active ? 'aktif ✓' : 'kayıtlı değil'
+    }
+  } catch (e) {}
+
+  lines.push(`tarayıcı      : ${browserName()}`)
+  lines.push(`sürüm         : ${iosVersion()} · ${standalone ? 'ana ekran uygulaması' : 'tarayıcı sekmesi'}`)
+  lines.push(`WebGPU        : ${gpu}`)
+  lines.push(`depolama      : ${persist} · ${usage}`)
+  lines.push(`service worker: ${sw}`)
+  lines.push(`kitaplık      : ${state.docs.length} kaynak · ${state.chunks.length} parça`)
+  lines.push(`model         : ${state.modelId || 'yüklü değil'}`)
+  box.textContent = lines.join('\n')
+  return lines.join('\n')
 }
 
 /* ---------------- PDF → parçalar ---------------- */
@@ -860,6 +935,25 @@ async function loadDemo() {
 $('#btnDemo').addEventListener('click', loadDemo)
 $('#btnDemo2').addEventListener('click', loadDemo)
 
+$('#btnDiagCopy').addEventListener('click', async () => {
+  const t = await renderDiag()
+  try {
+    await navigator.clipboard.writeText(t)
+    toast('Tanılama bilgisi kopyalandı')
+  } catch (e) {
+    toast('Kopyalanamadı — metni elle seçebilirsin')
+  }
+})
+$('#btnDiagRefresh').addEventListener('click', renderDiag)
+$('#btnCopyUrl').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(location.href)
+    toast('Adres kopyalandı — Safari\'de aç')
+  } catch (e) {
+    toast(location.href, 6000)
+  }
+})
+
 $('#btnExport').addEventListener('click', exportBackup)
 $('#btnImport').addEventListener('click', () => $('#importInput').click())
 $('#importInput').addEventListener('change', (e) => {
@@ -934,13 +1028,14 @@ document.querySelectorAll('[data-ex]').forEach((b) =>
     session = chats.length ? chats[0] : newSession()
     renderSession()
     await updateBackupInfo()
+    renderDiag()
   } catch (e) {
     console.error('DB okunamadı', e)
     toast('Yerel depo açılamadı (gizli sekme olabilir)')
   }
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {})
+    navigator.serviceWorker.register('./sw.js').then(() => renderDiag()).catch(() => {})
   }
 })()
 

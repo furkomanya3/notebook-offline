@@ -194,6 +194,23 @@
           <div class="muted" id="mdlTxt"></div></div>
       </div>
 
+      <div class="card" id="gpuWarn" style="display:none;border-color:#5a3b1f;background:#1c1408">
+        <h2 style="color:#ffb454">Bu tarayıcıda model çalışmaz</h2>
+        <div class="muted" style="font-size:13.5px" id="gpuWarnTxt">WebGPU bulunamadı. Aynı adresi <b>Safari</b> veya güncel Chrome'da açman gerekiyor.</div>
+        <div class="row" style="margin-top:10px">
+          <button class="subtle" id="btnCopyUrl" style="flex:1">Adresi kopyala</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Tarayıcı & cihaz tanılama</h2>
+        <div class="muted" id="diagBox" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;white-space:pre-wrap;line-height:1.65">—</div>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost" id="btnDiagCopy" style="flex:1">Bilgiyi kopyala</button>
+          <button class="ghost" id="btnDiagRefresh">Yenile</button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Telefon için ipuçları</h2>
         <div class="muted" style="font-size:13.5px;line-height:1.6">
