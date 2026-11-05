@@ -198,8 +198,13 @@
         <h2 style="color:#ffb454">Bu tarayıcıda model çalışmaz</h2>
         <div class="muted" style="font-size:13.5px" id="gpuWarnTxt">WebGPU bulunamadı. Aynı adresi <b>Safari</b> veya güncel Chrome'da açman gerekiyor.</div>
         <div class="row" style="margin-top:10px">
+          <button id="btnOpenSafari" style="flex:1">Safari'de aç</button>
+          <button class="ghost" id="btnGpuRetry">Tekrar dene</button>
+        </div>
+        <div class="row" style="margin-top:8px">
           <button class="subtle" id="btnCopyUrl" style="flex:1">Adresi kopyala</button>
         </div>
+        <div class="muted" style="font-size:12px;margin-top:8px">Not: iPhone'da Opera ve DuckDuckGo da WebKit kullanır; WebGPU yalnız iOS 26+ Safari'de güvenilir çalışır. Safari'de bir kez model indirdikten sonra yedeği indirip diğer tarayıcıya taşıyabilirsin.</div>
       </div>
 
       <div class="card">

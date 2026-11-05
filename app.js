@@ -261,30 +261,58 @@ document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click
 
 /* ---------------- WebGPU kontrol ---------------- */
 
+let gpuProbe = { state: 'bilinmiyor', detail: '', adapter: null }
+
+async function requestAdapterSmart() {
+  const tries = [
+    { label: 'varsayılan', opt: {} },
+    { label: 'yüksek performans', opt: { powerPreference: 'high-performance' } },
+    { label: 'yazılım (yavaş)', opt: { forceFallbackAdapter: true } },
+  ]
+  const errs = []
+  for (const t of tries) {
+    try {
+      const a = await navigator.gpu.requestAdapter(t.opt)
+      if (a) return { adapter: a, label: t.label }
+    } catch (e) {
+      errs.push(t.label + ': ' + (e.message || e))
+    }
+  }
+  throw new Error(errs.length ? errs.join(' · ') : 'adaptör alınamadı')
+}
+
 async function checkGPU() {
   const dot = $('#gpuDot')
   const txt = $('#gpuTxt')
+  dot.className = 'dot'
   if (!('gpu' in navigator)) {
+    gpuProbe = { state: 'API yok', detail: 'navigator.gpu tanımsız', adapter: null }
     dot.classList.add('err')
     txt.textContent = 'WebGPU yok'
-    showGpuWarn('Bu tarayıcı WebGPU API\'sini sunmuyor. Aynı adresi <b>Safari</b> veya güncel Chrome\'da açman gerekiyor.')
+    showGpuWarn('Bu tarayıcı WebGPU API\'sini sunmuyor. Aynı adresi <b>Safari</b>\'de aç (iOS 26+ gerekir).')
     return false
   }
   try {
-    const a = await navigator.gpu.requestAdapter()
-    if (!a) throw new Error('adaptör yok')
+    const r = await requestAdapterSmart()
+    gpuProbe = { state: 'hazır', detail: r.label, adapter: r.adapter }
     dot.classList.add('ok')
     txt.textContent = 'WebGPU hazır'
+    const box = $('#gpuWarn')
+    if (box) box.style.display = 'none'
     return true
   } catch (e) {
+    gpuProbe = { state: 'adaptör alınamadı', detail: e.message || String(e), adapter: null }
     dot.classList.add('warn')
-    txt.textContent = 'WebGPU sınırlı'
+    txt.textContent = 'Model çalışmaz'
     const bn = browserName()
     const third = /DuckDuckGo|Opera|Edge|Chrome|Firefox/.test(bn)
-    showGpuWarn('WebGPU var ama GPU adaptörü alınamadı (' + (e.message || e) + '). ' +
-      (third
-        ? 'iOS\'ta ' + bn + ' de WebKit kullanır ama WebGPU genelde kapalıdır. Aynı adresi <b>Safari</b>\'de açıp modeli orada yükle; sonra ' + bn + '\'e dönmek istersen yedeği indir/yükle.'
-        : 'Model yüklemeyi yine de deneyebilirsin.'))
+    if (third) {
+      showGpuWarn('GPU adaptörü alınamadı. iOS\'ta <b>' + bn + '</b> da WebKit kullanır ama WebGPU bu tarayıcılarda genelde kapalıdır. ' +
+        'Aynı adresi <b>Safari</b>\'de açıp modeli orada yükle — kitaplığını taşımak için Safari\'de <b>Yedeği indir</b> / <b>Yedekten yükle</b> kullanabilirsin.')
+    } else {
+      showGpuWarn('WebGPU var ama GPU adaptörü alınamadı (<i>' + (e.message || e) + '</i>). ' +
+        'iPhone\'da iOS 26+ gerekiyor. Düşük güç modunu kapat, başka sekmeleri kapatıp <b>Tekrar dene</b>\'ye bas.')
+    }
     return false
   }
 }
@@ -321,19 +349,15 @@ async function renderDiag() {
   const standalone =
     window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
 
-  let gpu = 'API yok'
-  try {
-    if ('gpu' in navigator) {
-      const a = await navigator.gpu.requestAdapter()
-      if (!a) gpu = 'adaptör alınamadı'
-      else {
-        const inf = a.info || {}
-        gpu = 'hazır' + (inf.vendor ? ` (${inf.vendor}${inf.architecture ? '/' + inf.architecture : ''})` : '')
-      }
-    }
-  } catch (e) {
-    gpu = 'hata: ' + (e.message || e)
+  let gpu = gpuProbe.state
+  if (gpuProbe.state === 'hazır') {
+    const inf = gpuProbe.adapter && gpuProbe.adapter.info ? gpuProbe.adapter.info : {}
+    gpu += (inf.vendor ? ` (${inf.vendor}${inf.architecture ? '/' + inf.architecture : ''})` : '') +
+      (gpuProbe.detail && gpuProbe.detail !== 'varsayılan' ? ` · ${gpuProbe.detail}` : '')
+  } else if (gpuProbe.detail && gpuProbe.detail !== gpuProbe.state) {
+    gpu += ` · ${gpuProbe.detail}`
   }
+  if (gpuProbe.state === 'bilinmiyor' && ('gpu' in navigator)) gpu = 'kontrol ediliyor…'
 
   let persist = '?'
   let usage = '?'
@@ -950,6 +974,32 @@ $('#btnDiagCopy').addEventListener('click', async () => {
   }
 })
 $('#btnDiagRefresh').addEventListener('click', renderDiag)
+$('#btnGpuRetry').addEventListener('click', async () => {
+  const ok = await checkGPU()
+  toast(ok ? 'WebGPU hazır — modeli yükleyebilirsin' : 'Hâlâ GPU adaptörü yok', 4000)
+  renderDiag()
+})
+
+$('#btnOpenSafari').addEventListener('click', () => {
+  const url = location.href.split('#')[0]
+  if (browserName() === 'Safari') {
+    location.reload()
+    return
+  }
+  // iOS: üçüncü parti tarayıcıdan Safari'yi açan URL şeması
+  try {
+    location.href = 'x-safari-' + url
+  } catch (e) {}
+  // şema engellenirse adresi kopyala ki elle yapıştırabilsin
+  setTimeout(async () => {
+    if (document.visibilityState !== 'visible') return
+    try {
+      await navigator.clipboard.writeText(url)
+      toast('Safari açılmadı — adres kopyalandı, Safari\'ye yapıştır', 5000)
+    } catch (e) {}
+  }, 900)
+})
+
 $('#btnCopyUrl').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(location.href)
