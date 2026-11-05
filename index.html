@@ -154,6 +154,17 @@
       </div>
 
       <div class="card">
+        <h2>Yedekleme · cihazlar arası taşıma</h2>
+        <div class="muted" style="font-size:13.5px">Kitaplık + arama indeksi + sohbet geçmişi <b>tek dosyada</b>. Laptopta indir → AirDrop / iCloud / e-posta ile telefona at → telefonda <b>Yedekten yükle</b>. Böylece 101 PDF'i yeniden eklemezsin, indeks hazır gelir.</div>
+        <div class="row" style="margin-top:12px">
+          <button class="subtle" id="btnExport" style="flex:1">Yedeği indir</button>
+          <button class="ghost" id="btnImport" style="flex:1">Yedekten yükle</button>
+        </div>
+        <input type="file" id="importInput" accept=".json,.gz,application/json,application/gzip" style="display:none" />
+        <div class="muted" id="backupInfo" style="margin-top:10px;font-size:12px">—</div>
+      </div>
+
+      <div class="card">
         <h2>Durum</h2>
         <div class="muted" id="statLine">—</div>
         <div class="muted hide" id="modeNote" style="margin-top:8px;color:#ffb454"></div>
@@ -205,6 +216,11 @@
 
     <!-- ============ SOHBET ============ -->
     <section class="tab" id="tab-chat">
+      <div class="row" style="margin-bottom:12px">
+        <button class="subtle" id="btnNewChat">＋ Yeni sohbet</button>
+        <button class="ghost" id="btnDelChat">Sohbeti sil</button>
+        <span class="pill" id="chatPill" style="margin-left:auto">geçmiş kalıcı</span>
+      </div>
       <div class="chat" id="chat"></div>
       <div class="card" id="chatEmpty">
         <h2>Soru sor</h2>

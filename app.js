@@ -51,14 +51,14 @@ const state = {
 const DB_NAME = 'notebook-offline'
 let dbp = null
 let memMode = false
-const mem = { docs: [], chunks: [], seq: 1 }
+const mem = { docs: [], chunks: [], chats: [], seq: 1 }
 
 function openDB() {
   if (dbp) return dbp
   dbp = new Promise((resolve, reject) => {
     let req
     try {
-      req = indexedDB.open(DB_NAME, 1)
+      req = indexedDB.open(DB_NAME, 2)
     } catch (e) {
       reject(e)
       return
@@ -70,6 +70,10 @@ function openDB() {
         st.createIndex('docId', 'docId')
       }
       if (!d.objectStoreNames.contains('docs')) d.createObjectStore('docs', { keyPath: 'id' })
+      if (!d.objectStoreNames.contains('chats')) {
+        const cs = d.createObjectStore('chats', { keyPath: 'id' })
+        cs.createIndex('updatedAt', 'updatedAt')
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error || new Error('indexedDB error'))
@@ -162,6 +166,61 @@ const store = {
         }
       }
       t.objectStore('docs').delete(docId)
+      t.oncomplete = res
+      t.onerror = () => rej(t.error)
+    })
+  },
+
+  /* ---- sohbetler ---- */
+  async listChats() {
+    if (memMode) return mem.chats.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    const d = await openDB()
+    return new Promise((res, rej) => {
+      const r = d.transaction('chats').objectStore('chats').getAll()
+      r.onsuccess = () => res((r.result || []).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)))
+      r.onerror = () => rej(r.error)
+    })
+  },
+
+  async putChat(chat) {
+    if (memMode) {
+      const i = mem.chats.findIndex((c) => c.id === chat.id)
+      if (i >= 0) mem.chats[i] = chat
+      else mem.chats.push(chat)
+      return
+    }
+    const d = await openDB()
+    return new Promise((res, rej) => {
+      const t = d.transaction('chats', 'readwrite')
+      t.objectStore('chats').put(chat)
+      t.oncomplete = () => res()
+      t.onerror = () => rej(t.error)
+    })
+  },
+
+  async deleteChat(id) {
+    if (memMode) {
+      mem.chats = mem.chats.filter((c) => c.id !== id)
+      return
+    }
+    const d = await openDB()
+    return new Promise((res, rej) => {
+      const t = d.transaction('chats', 'readwrite')
+      t.objectStore('chats').delete(id)
+      t.oncomplete = () => res()
+      t.onerror = () => rej(t.error)
+    })
+  },
+
+  async clearChats() {
+    if (memMode) {
+      mem.chats = []
+      return
+    }
+    const d = await openDB()
+    await new Promise((res, rej) => {
+      const t = d.transaction('chats', 'readwrite')
+      t.objectStore('chats').clear()
       t.oncomplete = res
       t.onerror = () => rej(t.error)
     })
@@ -307,6 +366,7 @@ async function ingestFiles(files) {
   } finally {
     state.busy = false
     renderDocs()
+    updateBackupInfo()
     setTimeout(() => $('#ingBarWrap').classList.add('hide'), 4000)
   }
 }
@@ -414,12 +474,74 @@ function renderAnswer(html) {
   return h
 }
 
-function addUserMsg(text) {
+/* --- oturum (sohbet kalıcılığı) --- */
+let session = null
+
+function newSession() {
+  return {
+    id: (crypto.randomUUID && crypto.randomUUID()) || 'c' + Date.now() + Math.random(),
+    title: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    messages: [],
+  }
+}
+
+function ensureSession() {
+  if (!session) session = newSession()
+  return session
+}
+
+async function saveSession() {
+  if (!session) return
+  session.updatedAt = Date.now()
+  if (!session.title) {
+    const first = session.messages.find((m) => m.role === 'user')
+    if (first) session.title = first.text.slice(0, 48)
+  }
+  try {
+    await store.putChat(JSON.parse(JSON.stringify(session)))
+  } catch (e) {
+    console.warn('sohbet kaydedilemedi', e)
+  }
+}
+
+function paintSources(box, sources) {
+  box.innerHTML = ''
+  if (!sources || !sources.length) {
+    box.classList.add('hide')
+    return
+  }
+  box.classList.remove('hide')
+  const det = el('details')
+  det.appendChild(el('summary', null, `kaynaklar (${sources.length}) — görmek için dokun`))
+  sources.forEach((src, i) => {
+    const p = el('p')
+    const txt = src.t || ''
+    p.innerHTML =
+      `<b style="color:#cfe1f5">[${i + 1}] ${enc(src.n)} · sayfa ${src.p}</b>\n` +
+      enc(txt.slice(0, 700)) +
+      (txt.length > 700 ? '…' : '')
+    det.appendChild(p)
+  })
+  box.appendChild(det)
+}
+
+function paintBot(ui, text, sources) {
+  ui.body.innerHTML = text ? renderAnswer(text) : '<b>Kaynaklarda bu bilgi yok.</b>'
+  paintSources(ui.src, sources)
+}
+
+function addUserMsg(text, persist = true) {
   $('#chatEmpty')?.classList.add('hide')
   const m = el('div', 'msg user')
   m.textContent = text
   $('#chat').appendChild(m)
   scrollChat()
+  if (persist) {
+    ensureSession().messages.push({ role: 'user', text, ts: Date.now() })
+    saveSession()
+  }
 }
 
 function addBotMsg() {
@@ -434,6 +556,56 @@ function addBotMsg() {
   $('#chat').appendChild(m)
   scrollChat()
   return { body, src, head }
+}
+
+function renderSession() {
+  const box = $('#chat')
+  box.innerHTML = ''
+  const msgs = session ? session.messages : []
+  if (!msgs.length) {
+    $('#chatEmpty')?.classList.remove('hide')
+    return
+  }
+  $('#chatEmpty')?.classList.add('hide')
+  for (const msg of msgs) {
+    if (msg.role === 'user') {
+      const m = el('div', 'msg user')
+      m.textContent = msg.text
+      box.appendChild(m)
+    } else {
+      const m = el('div', 'msg bot')
+      m.appendChild(el('h3', null, 'cevap'))
+      const body = el('div')
+      body.innerHTML = renderAnswer(msg.text || '')
+      m.appendChild(body)
+      const src = el('div', 'src hide')
+      m.appendChild(src)
+      paintSources(src, msg.sources)
+      box.appendChild(m)
+    }
+  }
+  scrollChat()
+}
+
+async function startNewChat() {
+  await saveSession()
+  session = newSession()
+  renderSession()
+  toast('Yeni sohbet')
+  $('#q').focus()
+}
+
+async function deleteCurrentChat() {
+  if (!session || !session.messages.length) {
+    session = newSession()
+    renderSession()
+    return toast('Sohbet temizlendi')
+  }
+  if (!confirm('Bu sohbet geçmişi silinsin mi?')) return
+  await store.deleteChat(session.id)
+  session = newSession()
+  renderSession()
+  toast('Sohbet silindi')
 }
 
 function scrollChat() {
@@ -462,8 +634,11 @@ async function ask(question) {
 
     const hits = search(state.index, question, 6).map((h) => ({ ...h, chunk: state.chunks[h.i] }))
     if (!hits.length) {
-      ui.body.innerHTML =
-        '<b>Kaynaklarda bu bilgi yok.</b>\n\n(Verilen kelimelerle eşleşen parça bulunamadı. Farklı kelimelerle dene veya kitaplığa ilgili PDF\'i ekle.)'
+      const msg =
+        'Kaynaklarda bu bilgi yok.\n\n(Verilen kelimelerle eşleşen parça bulunamadı. Farklı kelimelerle dene veya kitaplığa ilgili PDF ekle.)'
+      paintBot(ui, msg, [])
+      ensureSession().messages.push({ role: 'bot', text: msg, sources: [], ts: Date.now() })
+      await saveSession()
       return
     }
 
@@ -486,27 +661,22 @@ async function ask(question) {
       scrollChat()
     }
     const clean = stripThink(acc).trim()
-    if (!clean) ui.body.innerHTML = '<b>Kaynaklarda bu bilgi yok.</b>'
-    else ui.body.innerHTML = renderAnswer(clean)
-
-    // kaynak listesi
-    ui.src.classList.remove('hide')
-    const det = el('details')
-    const sum = el('summary', null, `kaynaklar (${hits.length}) — görmek için dokun`)
-    det.appendChild(sum)
-    hits.forEach((h, i) => {
-      const p = el('p')
-      p.innerHTML =
-        `<b style="color:#cfe1f5">[${i + 1}] ${enc(h.chunk.n)} · sayfa ${h.chunk.p}</b>\n` +
-        enc(h.chunk.t.slice(0, 700)) +
-        (h.chunk.t.length > 700 ? '…' : '')
-      det.appendChild(p)
-    })
-    ui.src.appendChild(det)
+    const sources = hits.map((h) => ({ n: h.chunk.n, p: h.chunk.p, t: h.chunk.t }))
+    paintBot(ui, clean, sources)
     scrollChat()
+    ensureSession().messages.push({
+      role: 'bot',
+      text: clean || 'Kaynaklarda bu bilgi yok.',
+      sources,
+      ts: Date.now(),
+    })
+    await saveSession()
   } catch (e) {
     console.error(e)
-    ui.body.innerHTML = `<b style="color:#ff8a8a">Hata:</b> ${enc(e.message || String(e))}`
+    const t = 'Hata: ' + (e.message || String(e))
+    ui.body.innerHTML = `<b style="color:#ff8a8a">${enc(t)}</b>`
+    ensureSession().messages.push({ role: 'bot', text: t, sources: [], ts: Date.now() })
+    await saveSession()
   } finally {
     state.generating = false
     $('#btnSend').disabled = false
@@ -522,6 +692,125 @@ async function updateStorage() {
       `kullanılan: ${fmtBytes(est.usage)} / kotanın ${fmtBytes(est.quota)}`
   } catch (e) {
     $('#storageLine').textContent = 'durum okunamadı'
+  }
+}
+
+/* ---------------- yedekleme (cihazlar arası taşıma) ---------------- */
+
+async function updateBackupInfo() {
+  try {
+    const chars = state.chunks.reduce((a, c) => a + (c.t ? c.t.length : 0), 0)
+    const chats = await store.listChats()
+    const raw = chars * 2
+    $('#backupInfo').textContent =
+      `${state.docs.length} kaynak · ${state.chunks.length} parça · ${chats.length} sohbet · ` +
+      `yedek ~${fmtBytes(raw)} (sıkıştırınca genelde 1/3'ü)`
+  } catch (e) {}
+}
+
+async function exportBackup() {
+  try {
+    if (!state.chunks.length) return toast('Kitaplık boş — yedeklenecek bir şey yok')
+    await saveSession()
+    const payload = {
+      app: 'notebook-offline',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      docs: state.docs,
+      chunks: state.chunks.map((c) => ({ d: c.docId, n: c.n, p: c.p, t: c.t })),
+      chats: await store.listChats(),
+    }
+    const json = JSON.stringify(payload)
+    let blob = new Blob([json], { type: 'application/json' })
+    let name = `notebook-yedek-${new Date().toISOString().slice(0, 10)}.json`
+    if (typeof CompressionStream !== 'undefined') {
+      try {
+        blob = await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).blob()
+        name += '.gz'
+      } catch (e) {
+        /* sıkıştırma yoksa düz json */
+      }
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 15000)
+    toast(`Yedek indirildi: ${name} · ${fmtBytes(blob.size)}`, 6000)
+  } catch (e) {
+    console.error(e)
+    toast('Yedek alınamadı: ' + (e.message || e), 5000)
+  }
+}
+
+async function importBackup(file) {
+  const bar = $('#ingBarWrap'), txt = $('#ingTxt')
+  try {
+    bar.classList.remove('hide')
+    txt.textContent = 'yedek okunuyor…'
+    const buf = await file.arrayBuffer()
+    const head = new Uint8Array(buf.slice(0, 2))
+    let json
+    if (head[0] === 0x1f && head[1] === 0x8b) {
+      if (typeof DecompressionStream === 'undefined') throw new Error('Bu tarayıcı gzip açamıyor; sıkıştırılmamış yedek dene')
+      json = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
+    } else {
+      json = new TextDecoder().decode(buf)
+    }
+    const data = JSON.parse(json)
+    if (!data || data.app !== 'notebook-offline') throw new Error('Bu dosya bir Notebook Offline yedeği değil')
+
+    if (state.docs.length || state.chunks.length) {
+      if (!confirm('Mevcut kitaplık ve sohbetler silinip yedek yüklenecek. Devam?')) {
+        bar.classList.add('hide')
+        return
+      }
+    }
+
+    txt.textContent = 'kitaplık yazılıyor…'
+    await store.clearAll()
+    await store.clearChats()
+    state.docs = []
+    state.chunks = []
+
+    const docs = data.docs || []
+    const chunks = (data.chunks || []).map((c) => ({
+      docId: c.d || c.docId,
+      n: c.n,
+      p: c.p,
+      t: c.t,
+    }))
+    for (let i = 0; i < docs.length; i++) {
+      await store.putDoc(docs[i])
+      state.docs.push(docs[i])
+      if (i % 20 === 0) {
+        txt.textContent = `kaynaklar yazılıyor… ${i + 1}/${docs.length}`
+        await tick()
+      }
+    }
+    await store.addChunks(chunks)
+    state.chunks = chunks
+    for (const ch of data.chats || []) await store.putChat(ch)
+
+    txt.textContent = 'indeks kuruluyor…'
+    await rebuildIndex()
+    renderDocs()
+    const chats = await store.listChats()
+    session = chats.length ? chats[0] : newSession()
+    renderSession()
+    await updateBackupInfo()
+    showTab('lib')
+    toast(`Yedek yüklendi: ${docs.length} kaynak · ${chunks.length} parça`, 6000)
+    txt.textContent = 'yedek yüklendi'
+  } catch (e) {
+    console.error(e)
+    toast('Yedek yüklenemedi: ' + (e.message || e), 6000)
+    txt.textContent = 'hata: ' + (e.message || e)
+  } finally {
+    setTimeout(() => bar.classList.add('hide'), 4000)
   }
 }
 
@@ -570,6 +859,16 @@ async function loadDemo() {
 
 $('#btnDemo').addEventListener('click', loadDemo)
 $('#btnDemo2').addEventListener('click', loadDemo)
+
+$('#btnExport').addEventListener('click', exportBackup)
+$('#btnImport').addEventListener('click', () => $('#importInput').click())
+$('#importInput').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0]
+  if (f) importBackup(f)
+  e.target.value = ''
+})
+$('#btnNewChat').addEventListener('click', startNewChat)
+$('#btnDelChat').addEventListener('click', deleteCurrentChat)
 
 $('#btnLoad').addEventListener('click', loadModel)
 $('#btnUnload').addEventListener('click', unloadModel)
@@ -628,10 +927,13 @@ document.querySelectorAll('[data-ex]').forEach((b) =>
     renderDocs()
     if (state.chunks.length) {
       await rebuildIndex()
-      $('#chatEmpty')?.classList.remove('hide')
     } else {
       $('#statLine').textContent = 'henüz indeks yok'
     }
+    const chats = await store.listChats()
+    session = chats.length ? chats[0] : newSession()
+    renderSession()
+    await updateBackupInfo()
   } catch (e) {
     console.error('DB okunamadı', e)
     toast('Yerel depo açılamadı (gizli sekme olabilir)')
@@ -641,3 +943,14 @@ document.querySelectorAll('[data-ex]').forEach((b) =>
     navigator.serviceWorker.register('./sw.js').catch(() => {})
   }
 })()
+
+/* test/teşhis kancası (uygulama davranışını etkilemez) */
+window.__nb = {
+  get state() {
+    return state
+  },
+  get session() {
+    return session
+  },
+  store,
+}

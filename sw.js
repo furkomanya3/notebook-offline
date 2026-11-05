@@ -1,7 +1,7 @@
 /* sw.js — uygulama kabuğunu önbelleğe alır (offline açılış için).
    Model dosyaları WebLLM tarafından ayrıca Cache API'de tutulur. */
 
-const VER = 'nb-offline-v1'
+const VER = 'nb-offline-v2'
 const SHELL = [
   './',
   './index.html',
