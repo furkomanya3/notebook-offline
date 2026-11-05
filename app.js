@@ -279,7 +279,12 @@ async function checkGPU() {
   } catch (e) {
     dot.classList.add('warn')
     txt.textContent = 'WebGPU sınırlı'
-    showGpuWarn('WebGPU var ama GPU adaptörü alınamadı (' + (e.message || e) + '). Model yüklemeyi yine de deneyebilirsin.')
+    const bn = browserName()
+    const third = /DuckDuckGo|Opera|Edge|Chrome|Firefox/.test(bn)
+    showGpuWarn('WebGPU var ama GPU adaptörü alınamadı (' + (e.message || e) + '). ' +
+      (third
+        ? 'iOS\'ta ' + bn + ' de WebKit kullanır ama WebGPU genelde kapalıdır. Aynı adresi <b>Safari</b>\'de açıp modeli orada yükle; sonra ' + bn + '\'e dönmek istersen yedeği indir/yükle.'
+        : 'Model yüklemeyi yine de deneyebilirsin.'))
     return false
   }
 }
